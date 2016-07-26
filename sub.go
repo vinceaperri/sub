@@ -13,7 +13,7 @@ import (
 	"sync"
 )
 
-var version = "0.1.0"
+var version = "0.2.0"
 
 func is_visible_dir(fi os.FileInfo) bool {
 	return fi.Mode().IsDir() && !strings.HasPrefix(fi.Name(), ".")
@@ -95,49 +95,13 @@ func (d *directory_flag_value) Set(value string) error {
 }
 
 // Print a status message in bold blue to stdout
-func print_status(message string) {
+func print_task_status(message string) {
 	fmt.Println("\x1B[1;34m" + message + "\x1B[0m")
 }
 
 // Print an error message in bold red to stderr
-func print_error(message string) {
+func print_task_error(message string) {
 	fmt.Fprintln(os.Stderr, "\x1B[1;31m"+message+"\x1B[0m")
-}
-
-// Run name as a subprocess with args as args inside each dir in dirs in
-// parallel.
-// j is the number of simultaneous subprocesses.
-func run(name string, args []string, dirs []string, j int) error {
-	mux := &sync.Mutex{}
-
-	tr, err := tasker.NewTasker(j)
-	if err != nil {
-		fmt.Println(err)
-	}
-	for _, dir := range dirs {
-		cmd := exec.Command(name, args...)
-		cmd.Dir = dir
-		tr.Add(dir, nil, func() error {
-			out, err := cmd.CombinedOutput()
-
-			// Write command output one at a time.
-			mux.Lock()
-			defer mux.Unlock()
-
-			if err == nil {
-				// Write done message in bold blue.
-				print_status(cmd.Dir + ": done")
-			} else {
-				// Write failed message in bold red.
-				print_error(cmd.Dir + ": failed: " + err.Error())
-			}
-			if _, oe := os.Stdout.Write(out); oe != nil {
-				print_error(cmd.Dir + ": failed to write output: " + err.Error())
-			}
-			return err
-		})
-	}
-	return tr.Run()
 }
 
 func main() {
@@ -161,8 +125,8 @@ func main() {
 	}
 
 	// 1 or more arguments are required.
-	cmd := flag.Args()
-	if len(cmd) == 0 {
+	cmd_format := flag.Args()
+	if len(cmd_format) == 0 {
 		flag.Usage()
 		os.Exit(2)
 	}
@@ -176,7 +140,7 @@ func main() {
 		} else {
 			vis_dirs, err := list_visible_dirs(".")
 			if err != nil {
-				fmt.Println(err)
+				fmt.Fprintln(os.Stderr, err)
 				os.Exit(-1)
 			}
 			dirs = vis_dirs
@@ -187,7 +151,50 @@ func main() {
 	}
 	sort.Strings(dirs)
 
-	if err := run(cmd[0], cmd[1:], dirs, j); err != nil {
+	// Create the Tasker that runs all of the commands.
+	tr, err := tasker.NewTasker(j)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(-1)
+	}
+
+	// This mutex prevents tasks from writing to stdout at the same time.
+	mux := &sync.Mutex{}
+
+	for _, dir := range dirs {
+
+		// A command may include {} to interpolate the current directory.
+		name := strings.Replace(cmd_format[0], "{}", dir, -1)
+		args := make([]string, 0)
+		for _, arg_f := range cmd_format[1:] {
+			args = append(args, strings.Replace(arg_f, "{}", dir, -1))
+		}
+
+		// Add a task that runs the interpolated command in the current directory.
+		cmd := exec.Command(name, args...)
+		cmd.Dir = dir
+		tr.Add(dir, nil, func() error {
+			out, err := cmd.CombinedOutput()
+
+			// Write command output one at a time.
+			mux.Lock()
+			defer mux.Unlock()
+
+			if err == nil {
+				// Write done message in bold blue.
+				print_task_status(cmd.Dir + ": done")
+			} else {
+				// Write failed message in bold red.
+				print_task_error(cmd.Dir + ": failed: " + err.Error())
+			}
+			if _, oe := os.Stdout.Write(out); oe != nil {
+				print_task_error(cmd.Dir + ": failed to write output: " + err.Error())
+			}
+			return err
+		})
+	}
+	if err := tr.Run(); err != nil {
+		// Error was already printed by one of the tasks.
 		os.Exit(-1)
 	}
 }
