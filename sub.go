@@ -13,7 +13,7 @@ import (
 	"sync"
 )
 
-var version = "0.2.0"
+var version = "0.2.1"
 
 func is_visible_dir(fi os.FileInfo) bool {
 	return fi.Mode().IsDir() && !strings.HasPrefix(fi.Name(), ".")
