@@ -104,6 +104,30 @@ func print_task_error(message string) {
 	fmt.Fprintln(os.Stderr, "\x1B[1;31m"+message+"\x1B[0m")
 }
 
+func cmd_task(cmd *exec.Cmd, mux *sync.Mutex) tasker.Task {
+	return func() error {
+		out, err := cmd.CombinedOutput()
+
+		// Write command output one at a time.
+		mux.Lock()
+		defer mux.Unlock()
+
+		prefix := fmt.Sprintf("%s: %s", cmd.Dir, strings.Join(cmd.Args, " "))
+
+		if err == nil {
+			// Write done message in bold blue.
+			print_task_status(prefix)
+		} else {
+			// Write failed message in bold red.
+			print_task_error(prefix + ": " + err.Error())
+		}
+		if _, oe := os.Stdout.Write(out); oe != nil {
+			print_task_error(prefix + ": failed to write output: " + err.Error())
+		}
+		return err
+	}
+}
+
 func main() {
 	var dirs directory_flag_value
 	var j int
@@ -173,25 +197,7 @@ func main() {
 		// Add a task that runs the interpolated command in the current directory.
 		cmd := exec.Command(name, args...)
 		cmd.Dir = dir
-		tr.Add(dir, nil, func() error {
-			out, err := cmd.CombinedOutput()
-
-			// Write command output one at a time.
-			mux.Lock()
-			defer mux.Unlock()
-
-			if err == nil {
-				// Write done message in bold blue.
-				print_task_status(cmd.Dir + ": done")
-			} else {
-				// Write failed message in bold red.
-				print_task_error(cmd.Dir + ": failed: " + err.Error())
-			}
-			if _, oe := os.Stdout.Write(out); oe != nil {
-				print_task_error(cmd.Dir + ": failed to write output: " + err.Error())
-			}
-			return err
-		})
+		tr.Add(dir, nil, cmd_task(cmd, mux))
 	}
 	if err := tr.Run(); err != nil {
 		// Error was already printed by one of the tasks.
