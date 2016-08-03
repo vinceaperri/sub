@@ -1,7 +1,7 @@
-build-i386:
+all: i386 amd64
+
+i386:
 	GOARCH=386 go build -o sub-i386
 
-build-amd64:
+amd64:
 	GOARCH=amd64 go build -o sub-amd64
-
-build: build-i386 build-amd64
