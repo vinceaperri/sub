@@ -23,7 +23,7 @@ but if one isn't provided, then it just runs in all non-hidden sub-directories,
 a sensible default.
 
 The format of a configuration file is a JSON formatted list of strings, each
-representing a sub-directory. It can technically be the path to any
+representing a sub-directory. It can be any non-existing path or the path to any
 directory:
 
 ```json
@@ -34,6 +34,9 @@ directory:
   "../im/complicated"
 ]
 ```
+
+If a path doesn't exist and is specified in the configuration file, it is
+automatically created as a directory.
 
 The positional arguments to sub is the command itself. If a command requires
 flags, then you must prefix the command with `--`:
@@ -48,3 +51,8 @@ number of simultaneous commands, pass a value  for `-j`:
 ```
 $ sub -j 4 git fetch
 ```
+
+## Future Features
+
+* Accept line-based configuration, with a directory on each line, as input from
+  `stdin` for shell interoperability.
