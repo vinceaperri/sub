@@ -13,7 +13,7 @@ import (
 	"strings"
 )
 
-var version = "0.3.0"
+var version = "0.3.1"
 
 func is_visible_dir(fi os.FileInfo) bool {
 	return fi.Mode().IsDir() && !strings.HasPrefix(fi.Name(), ".")
@@ -68,6 +68,16 @@ func cmd_task(cmd *exec.Cmd, l *logger, data map[string][]byte) tasker.Task {
 	return func() error {
 		prefix := fmt.Sprintf("%s: %s", cmd.Dir, strings.Join(cmd.Args, " "))
 		l.ok("%s: started\n", prefix)
+
+		// Create the directory if it does not exist.
+		if _, err := os.Stat(cmd.Dir); err != nil {
+			l.ok("%s: creating directory\n", prefix)
+			err = os.Mkdir(cmd.Dir, 0755)
+			if err != nil {
+				l.bad("%s: failed to create directory: %s\n", prefix, err)
+				os.Exit(-1)
+			}
+		}
 
 		dat, err := cmd.CombinedOutput()
 
@@ -140,7 +150,7 @@ func main() {
 			args = append(args, strings.Replace(arg_f, "{}", dir, -1))
 		}
 
-		// Add a task that runs the interpolated command in the current directory.
+		// Add a task that runs the interpolated command in dir.
 		cmd := exec.Command(name, args...)
 		cmd.Dir = dir
 		tr.Add(dir, nil, cmd_task(cmd, l, data))
